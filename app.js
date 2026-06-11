@@ -3,6 +3,7 @@ const express = require("express");
 const ipoRoutes = require("./routes/ipoRoutes");
 const calendarRoutes = require("./routes/calendarRoutes");
 const corporateActionRoutes = require("./routes/corporateActionRoutes");
+const stockEventsRoutes = require("./routes/stockEventsRoutes");
 
 const app = express();
 
@@ -22,12 +23,13 @@ app.get("/health", (req, res) => {
 app.use("/api/ipo", ipoRoutes);
 app.use("/api/calendar", calendarRoutes);
 app.use("/api/corporate-actions", corporateActionRoutes);
+app.use("/api/stock-events", stockEventsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: "Not Found",
-    availableRoutes: ["/", "/health", "/api/ipo", "/api/calendar", "/api/corporate-actions"],
+    availableRoutes: ["/", "/health", "/api/ipo", "/api/calendar", "/api/corporate-actions", "/api/stock-events"],
   });
 });
 
