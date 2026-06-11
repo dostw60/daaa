@@ -1,15 +1,25 @@
 const axios = require("axios");
-const { wrapper } = require("axios-cookiejar-support");
-const { CookieJar } = require("tough-cookie");
+let client = axios.create({
+  timeout: 15000
+});
 
-const jar = new CookieJar();
-const client = wrapper(
-  axios.create({
-    jar,
-    withCredentials: true,
-    timeout: 15000
-  })
-);
+try {
+  const { wrapper } = require("axios-cookiejar-support");
+  const { CookieJar } = require("tough-cookie");
+
+  const jar = new CookieJar();
+  client = wrapper(
+    axios.create({
+      jar,
+      withCredentials: true,
+      timeout: 15000
+    })
+  );
+} catch (err) {
+  console.warn(
+    "axios-cookiejar-support not available; falling back to plain axios client."
+  );
+}
 
 // -------------------------
 // FORMAT DATE (SAFE)
