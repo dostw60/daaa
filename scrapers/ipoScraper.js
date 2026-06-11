@@ -141,25 +141,45 @@ async function scrapeStockEvents(fromDate, toDate) {
       toDate: formatDate(toDate)
     };
 
-    await client.get("https://merolagani.com/");
+    console.log("🔍 Scraping from:", formatDate(fromDate), "to:", formatDate(toDate));
 
+    // First request to establish session
+    await client.get("https://merolagani.com/", {
+      timeout: 10000
+    });
+
+    // Make API request
     const { data } = await client.get(url, {
       params,
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-        Accept: "*/*",
+        Accept: "application/json, text/plain, */*",
         Referer: "https://merolagani.com/",
         "X-Requested-With": "XMLHttpRequest"
-      }
+      },
+      timeout: 10000
     });
 
+    console.log("📊 Raw API response type:", typeof data);
+    console.log("📊 Raw API response length:", JSON.stringify(data).length);
+    console.log("📊 Raw API response (first 500 chars):", JSON.stringify(data).substring(0, 500));
+
     const list = parseMaybeJson(data).map(normalizeEventItem);
-    console.log("Parsed events count:", list.length);
+    console.log("✅ Parsed events count:", list.length);
+
+    if (list.length > 0) {
+      console.log("📝 Sample event:", list[0]);
+    }
 
     return list;
   } catch (err) {
-    console.error("SCRAPER ERROR:", err.message);
+    console.error("❌ SCRAPER ERROR:", err.message);
+    console.error("❌ Error code:", err.code);
+    if (err.response) {
+      console.error("❌ Response status:", err.response.status);
+      console.error("❌ Response data (first 200 chars):", JSON.stringify(err.response.data).substring(0, 200));
+    }
     return [];
   }
 }
