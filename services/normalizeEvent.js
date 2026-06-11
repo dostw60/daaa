@@ -1,0 +1,209 @@
+const { classifyEvent } = require("./eventClassifier");
+
+const SYMBOL_BY_COMPANY = {
+  "appolo hydropower limited": "APHL",
+  "bhujung hydropower limited": "BJHL",
+  "ridge line energy limited": "RLEL",
+  "snow rivers limited": "SNOW",
+  "sopan pharmaceuticals limited": "SOPL",
+  "suryakunda hydro electric limited": "SKHEL"
+};
+
+const INVALID_SYMBOLS = new Set([
+  "AGM",
+  "FPO",
+  "IPO",
+  "LOCALS",
+  "PUBLIC",
+  "QII",
+  "SGM",
+  "SHARE",
+  "SHARES"
+]);
+
+function normalizeEvent(raw = {}) {
+  const rawText = getRawText(raw);
+  if (!rawText || rawText.length < 10) return null;
+
+  const { type, confidence } = classifyEvent(rawText);
+  if (type !== "IPO" || confidence < 0.5) return null;
+
+  const companyName = extractCompanyName(rawText);
+  if (!companyName) return null;
+
+  const shares = extractShares(rawText);
+  const symbol = extractSymbol(rawText, companyName);
+  const status = determineStatus(rawText);
+  const manualReviewReasons = getManualReviewReasons({
+    companyName,
+    symbol,
+    shares,
+    rawText
+  });
+
+  return {
+    company_name: companyName,
+    symbol,
+    shares,
+    issue_size: shares,
+    issue_type: type,
+    status,
+    source: raw.source || "merolagani",
+    source_url: raw.source_url || raw.sourceUrl || "https://merolagani.com",
+    event_value: {
+      units: shares || null,
+      manual_review: manualReviewReasons.length > 0,
+      manual_review_reasons: manualReviewReasons
+    },
+    confidence: calculateConfidence({
+      baseConfidence: confidence,
+      companyName,
+      symbol,
+      shares,
+      manualReviewReasons
+    })
+  };
+}
+
+function getRawText(raw) {
+  return String(
+    raw.announcementDetail ||
+    raw.announcement ||
+    raw.raw_text ||
+    raw.rawText ||
+    raw.company_name ||
+    ""
+  )
+    .replace(/\n|\r/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractCompanyName(text = "") {
+  const cleaned = text
+    .replace(/^Listing of\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const afterDash = cleaned.match(/\s-\s(.+?)(?:\s+\([A-Z]{2,10}\))?$/);
+  if (afterDash && looksLikeCompany(afterDash[1])) {
+    return cleanCompanyName(afterDash[1]);
+  }
+
+  const beforeAction = cleaned.match(
+    /^(.+?)\s+(?:has\s+(?:extended|published|notified|issued|distributed|opened|closed|allotted|listed|made)|is\s+going\s+to|opened|closed|will\s+(?:open|close|issue)|published|notified|issued)\b/i
+  );
+  if (beforeAction && looksLikeCompany(beforeAction[1])) {
+    return cleanCompanyName(beforeAction[1]);
+  }
+
+  const companyPrefix = cleaned.match(
+    /^(.+?\b(?:Limited|Ltd\.?|Bank|Hydropower|Hydro|Energy|Company|Finance|Insurance|Hospital|College|Pharmaceuticals|Industries)\b)/i
+  );
+  if (companyPrefix) {
+    return cleanCompanyName(companyPrefix[1]);
+  }
+
+  return null;
+}
+
+function cleanCompanyName(name = "") {
+  return name
+    .replace(/\s+\([A-Z]{2,10}\)\s*$/i, "")
+    .replace(/\s+\b(?:has\s+(?:extended|published|notified|issued|distributed|opened|closed|allotted|listed|made)|is\s+going\s+to|opened|closed|published|notified|issued)\b.*$/i, "")
+    .replace(/[.,;:\-]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function looksLikeCompany(value = "") {
+  return /\b(Limited|Ltd\.?|Bank|Hydropower|Hydro|Energy|Company|Finance|Insurance|Hospital|College|Pharmaceuticals|Industries)\b/i.test(value);
+}
+
+function extractSymbol(text = "", companyName = "") {
+  const symbols = [...text.matchAll(/\(([A-Z]{2,12})\)/gi)]
+    .map((match) => match[1].toUpperCase())
+    .filter((symbol) => !INVALID_SYMBOLS.has(symbol));
+
+  if (symbols.length) return symbols[symbols.length - 1];
+
+  return SYMBOL_BY_COMPANY[companyName.toLowerCase()] || "UNKNOWN";
+}
+
+function extractShares(text = "") {
+  const match = text.match(/([\d,]+(?:\.\d+)?)\s*(?:units?|shares?)/i);
+  if (!match) return 0;
+
+  return Number(match[1].replace(/,/g, "").split(".")[0]) || 0;
+}
+
+function determineStatus(text = "") {
+  const t = text.toLowerCase();
+
+  if (/\b(listed|listing|has been listed)\b/.test(t)) {
+    return "Listed";
+  }
+
+  if (/\b(allotted|distributed|closed|closing)\b/.test(t) || /\bclose(?:s|d)?\b/.test(t)) {
+    return "Closed";
+  }
+
+  if (/\b(opened|opening|started|extended)\b/.test(t) || /\bopen(?:s)?\b/.test(t)) {
+    return "Open";
+  }
+
+  if (/\b(is going to|will|upcoming|starting from|issue|issuing)\b/.test(t)) {
+    return "Upcoming";
+  }
+
+  return "Upcoming";
+}
+
+function getManualReviewReasons({ companyName, symbol, shares, rawText }) {
+  const reasons = [];
+
+  if (!companyName || !looksLikeCompany(companyName)) {
+    reasons.push("company_name_partial");
+  }
+
+  if (symbol === "UNKNOWN") {
+    reasons.push("symbol_missing");
+  }
+
+  if (!shares) {
+    reasons.push("units_missing");
+  }
+
+  if (/\bhas\s+(extended|published|notified|issued)\b/i.test(companyName)) {
+    reasons.push("company_name_has_announcement_suffix");
+  }
+
+  if (
+    !/\bipo\b/i.test(rawText) &&
+    !/public issuance of securities/i.test(rawText) &&
+    !/book-building/i.test(rawText)
+  ) {
+    reasons.push("ipo_keyword_missing");
+  }
+
+  return reasons;
+}
+
+function calculateConfidence({ baseConfidence, companyName, symbol, shares, manualReviewReasons }) {
+  if (manualReviewReasons.includes("company_name_partial")) return 0.2;
+  if (manualReviewReasons.includes("company_name_has_announcement_suffix")) return 0.2;
+  if (!shares && symbol === "UNKNOWN") return 0.2;
+  if (!shares) return 0.5;
+  if (symbol === "UNKNOWN") return 0.8;
+  if (companyName && symbol !== "UNKNOWN" && shares) return 1;
+
+  return Math.min(baseConfidence || 0.95, 0.95);
+}
+
+module.exports = {
+  normalizeEvent,
+  extractCompanyName,
+  extractShares,
+  extractSymbol,
+  determineStatus
+};
