@@ -26,7 +26,10 @@ function normalizeEvent(raw = {}) {
   if (!rawText || rawText.length < 10) return null;
 
   const { type, confidence } = classifyEvent(rawText);
-  if (type !== "IPO" || confidence < 0.5) return null;
+  
+  // Accept IPO, Bonus, Dividend, RightShare events with lower confidence threshold
+  const validTypes = ["IPO", "Bonus", "Dividend", "RightShare"];
+  if (!validTypes.includes(type) || confidence < 0.3) return null;
 
   const companyName = extractCompanyName(rawText);
   if (!companyName) return null;
@@ -176,14 +179,6 @@ function getManualReviewReasons({ companyName, symbol, shares, rawText }) {
 
   if (/\bhas\s+(extended|published|notified|issued)\b/i.test(companyName)) {
     reasons.push("company_name_has_announcement_suffix");
-  }
-
-  if (
-    !/\bipo\b/i.test(rawText) &&
-    !/public issuance of securities/i.test(rawText) &&
-    !/book-building/i.test(rawText)
-  ) {
-    reasons.push("ipo_keyword_missing");
   }
 
   return reasons;
