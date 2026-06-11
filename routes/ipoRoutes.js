@@ -88,7 +88,11 @@ router.get("/debug", async (req, res) => {
     }
 });
 
-router.post("/sync", async (req, res) => {
+// Sync endpoint - accepts both GET and POST
+router.get("/sync", syncHandler);
+router.post("/sync", syncHandler);
+
+async function syncHandler(req, res) {
     try {
         console.log("🔄 Starting sync...");
         const { fromDate, toDate } = req.query;
@@ -103,6 +107,6 @@ router.post("/sync", async (req, res) => {
             message: err.message
         });
     }
-});
+}
 
 module.exports = router;
