@@ -2,49 +2,112 @@ const router = require("express").Router();
 const db = require("../db/pool");
 const { syncAllEvents } = require("../services/syncService");
 
-function serializeIPO(row) {
+function serializeEvent(row) {
     return {
         ...row,
         shares: Number(row.shares || 0),
-        issue_size: Number(row.issue_size || 0)
+        issue_size: Number(row.issue_size || 0),
+        confidence: Number(row.confidence || 0)
     };
 }
 
-async function getUpcomingIPOs(req, res) {
+// Get IPOs
+async function getIPOs(req, res) {
     try {
-        // Query only upcoming_ipos table (stock_events fallback removed)
-        const upcomingResult = await db.query(
-            "SELECT * FROM upcoming_ipos ORDER BY open_date ASC"
+        const result = await db.query(
+            "SELECT * FROM upcoming_ipos WHERE issue_type = 'IPO' ORDER BY open_date ASC"
         );
-
         res.json({
             success: true,
-            count: upcomingResult.rows.length,
-            data: upcomingResult.rows.map(serializeIPO)
+            count: result.rows.length,
+            data: result.rows.map(serializeEvent)
         });
-
     } catch (err) {
-        console.error("❌ Error in getUpcomingIPOs:", err.message);
-
-        res.status(500).json({
-            success: false,
-            message: err.message
-        });
+        console.error("❌ Error fetching IPOs:", err.message);
+        res.status(500).json({ success: false, message: err.message });
     }
 }
 
-router.get("/", getUpcomingIPOs);
+// Get Dividends
+async function getDividends(req, res) {
+    try {
+        const result = await db.query(
+            "SELECT * FROM upcoming_ipos WHERE issue_type = 'Dividend' ORDER BY updated_at DESC"
+        );
+        res.json({
+            success: true,
+            count: result.rows.length,
+            data: result.rows.map(serializeEvent)
+        });
+    } catch (err) {
+        console.error("❌ Error fetching Dividends:", err.message);
+        res.status(500).json({ success: false, message: err.message });
+    }
+}
 
-router.get("/upcoming", async (req, res) => {
-    return getUpcomingIPOs(req, res);
-});
+// Get Bonus
+async function getBonus(req, res) {
+    try {
+        const result = await db.query(
+            "SELECT * FROM upcoming_ipos WHERE issue_type = 'Bonus' ORDER BY updated_at DESC"
+        );
+        res.json({
+            success: true,
+            count: result.rows.length,
+            data: result.rows.map(serializeEvent)
+        });
+    } catch (err) {
+        console.error("❌ Error fetching Bonus:", err.message);
+        res.status(500).json({ success: false, message: err.message });
+    }
+}
+
+// Get Right Share
+async function getRightShare(req, res) {
+    try {
+        const result = await db.query(
+            "SELECT * FROM upcoming_ipos WHERE issue_type = 'RightShare' ORDER BY updated_at DESC"
+        );
+        res.json({
+            success: true,
+            count: result.rows.length,
+            data: result.rows.map(serializeEvent)
+        });
+    } catch (err) {
+        console.error("❌ Error fetching RightShare:", err.message);
+        res.status(500).json({ success: false, message: err.message });
+    }
+}
+
+// Get all events
+async function getAllEvents(req, res) {
+    try {
+        const result = await db.query(
+            "SELECT * FROM upcoming_ipos ORDER BY updated_at DESC"
+        );
+        res.json({
+            success: true,
+            count: result.rows.length,
+            data: result.rows.map(serializeEvent)
+        });
+    } catch (err) {
+        console.error("❌ Error fetching all events:", err.message);
+        res.status(500).json({ success: false, message: err.message });
+    }
+}
+
+router.get("/", getAllEvents);
+router.get("/ipo", getIPOs);
+router.get("/dividend", getDividends);
+router.get("/bonus", getBonus);
+router.get("/rights", getRightShare);
+router.get("/upcoming", getIPOs);
 
 // Debug endpoint - check tables exist and show raw data
 router.get("/debug", async (req, res) => {
     try {
         console.log("🔍 DEBUG: Checking database...");
         
-        // Check if table exists
         const tableCheck = await db.query(`
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
@@ -52,9 +115,6 @@ router.get("/debug", async (req, res) => {
             )
         `);
         
-        console.log("✅ upcoming_ipos table exists:", tableCheck.rows[0].exists);
-        
-        // Get table info
         const tableInfo = await db.query(`
             SELECT column_name, data_type 
             FROM information_schema.columns 
@@ -62,13 +122,12 @@ router.get("/debug", async (req, res) => {
             ORDER BY ordinal_position
         `);
         
-        console.log("📊 Table columns:", tableInfo.rows);
-        
-        // Get row count
         const countResult = await db.query("SELECT COUNT(*) as count FROM upcoming_ipos");
         const rowCount = parseInt(countResult.rows[0].count);
         
-        console.log("📈 Row count:", rowCount);
+        const typeBreakdown = await db.query(
+            "SELECT issue_type, COUNT(*) as count FROM upcoming_ipos GROUP BY issue_type"
+        );
         
         res.json({
             success: true,
@@ -76,15 +135,13 @@ router.get("/debug", async (req, res) => {
                 table_exists: tableCheck.rows[0].exists,
                 columns: tableInfo.rows,
                 row_count: rowCount,
+                breakdown_by_type: typeBreakdown.rows,
                 message: "Database structure is OK"
             }
         });
     } catch (err) {
         console.error("❌ DEBUG Error:", err.message);
-        res.status(500).json({
-            success: false,
-            message: err.message
-        });
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
@@ -97,15 +154,10 @@ async function syncHandler(req, res) {
         console.log("🔄 Starting sync...");
         const { fromDate, toDate } = req.query;
         const result = await syncAllEvents(fromDate, toDate);
-
         res.json(result);
     } catch (err) {
         console.error("❌ Error in sync:", err.message);
-
-        res.status(500).json({
-            success: false,
-            message: err.message
-        });
+        res.status(500).json({ success: false, message: err.message });
     }
 }
 

@@ -25,7 +25,7 @@ function normalizeEvent(raw = {}) {
   const rawText = getRawText(raw);
   if (!rawText || rawText.length < 10) return null;
 
-  const { type, confidence } = classifyEvent(rawText);
+  const { type, confidence, value } = classifyEvent(rawText);
   
   // Accept IPO, Bonus, Dividend, RightShare events with lower confidence threshold
   const validTypes = ["IPO", "Bonus", "Dividend", "RightShare"];
@@ -41,20 +41,29 @@ function normalizeEvent(raw = {}) {
     companyName,
     symbol,
     shares,
-    rawText
+    rawText,
+    type
   });
+
+  // Extract percentage for Dividend/Bonus
+  const percentage = extractPercentage(rawText);
+  
+  // Extract ratio for RightShare
+  const ratio = extractRatio(rawText);
 
   return {
     company_name: companyName,
     symbol,
     shares,
-    issue_size: shares,
+    issue_size: shares || (type === "Dividend" || type === "Bonus" ? percentage : 0),
     issue_type: type,
     status,
     source: raw.source || "merolagani",
     source_url: raw.source_url || raw.sourceUrl || "https://merolagani.com",
     event_value: {
       units: shares || null,
+      percentage: percentage || null,
+      ratio: ratio || null,
       manual_review: manualReviewReasons.length > 0,
       manual_review_reasons: manualReviewReasons
     },
@@ -134,10 +143,24 @@ function extractSymbol(text = "", companyName = "") {
 }
 
 function extractShares(text = "") {
-  const match = text.match(/([\d,]+(?:\.\d+)?)\s*(?:units?|shares?)/i);
+  const match = text.match(/(\[\d,]+(?:\.\d+)?)\s*(?:units?|shares?)/i);
   if (!match) return 0;
 
   return Number(match[1].replace(/,/g, "").split(".")[0]) || 0;
+}
+
+// Extract percentage for Dividend/Bonus
+function extractPercentage(text = "") {
+  const match = text.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (!match) return null;
+  return match[1];
+}
+
+// Extract ratio for RightShare (e.g., 1:5)
+function extractRatio(text = "") {
+  const match = text.match(/(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  return `${match[1]}:${match[2]}`;
 }
 
 function determineStatus(text = "") {
@@ -162,7 +185,7 @@ function determineStatus(text = "") {
   return "Upcoming";
 }
 
-function getManualReviewReasons({ companyName, symbol, shares, rawText }) {
+function getManualReviewReasons({ companyName, symbol, shares, rawText, type }) {
   const reasons = [];
 
   if (!companyName || !looksLikeCompany(companyName)) {
@@ -173,7 +196,13 @@ function getManualReviewReasons({ companyName, symbol, shares, rawText }) {
     reasons.push("symbol_missing");
   }
 
-  if (!shares) {
+  // For Dividend/Bonus, percentage is more important than shares
+  const percentage = extractPercentage(rawText);
+  if (["Dividend", "Bonus"].includes(type) && !percentage) {
+    reasons.push("percentage_missing");
+  }
+
+  if (!shares && !["Dividend", "Bonus"].includes(type)) {
     reasons.push("units_missing");
   }
 
