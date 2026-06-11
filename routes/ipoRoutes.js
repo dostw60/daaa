@@ -10,7 +10,7 @@ function serializeIPO(row) {
     };
 }
 
-router.get("/upcoming", async (req, res) => {
+async function getUpcomingIPOs(req, res) {
     try {
         const result = await db.query(
             "SELECT * FROM upcoming_ipos ORDER BY open_date ASC"
@@ -30,6 +30,12 @@ router.get("/upcoming", async (req, res) => {
             message: err.message
         });
     }
+}
+
+router.get("/", getUpcomingIPOs);
+
+router.get("/upcoming", async (req, res) => {
+    return getUpcomingIPOs(req, res);
 });
 
 router.post("/sync", async (req, res) => {
