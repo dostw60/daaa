@@ -1,4 +1,3 @@
-require("dotenv").config();
 const app = require("./app");
 const { startCron } = require("./jobs/cronJob");
 const { ensureSchema } = require("./db/ensureSchema");
