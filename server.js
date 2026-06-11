@@ -7,6 +7,8 @@ const { ensureSchema } = require("./db/ensureSchema");
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
+  console.log("🚀 Starting server initialization...");
+
   try {
     // 🔥 Debug: check if Render is passing DB URL
     console.log(
@@ -19,16 +21,25 @@ async function startServer() {
       throw new Error("DATABASE_URL is not set in environment variables");
     }
 
+    console.log("⏳ Initializing database schema...");
+    
     // Ensure schema is created BEFORE starting server
     await ensureSchema();
-    console.log("✅ Schema ensured successfully");
+    
+    console.log("✅ Schema initialization COMPLETE - all tables ready");
+    
+    // Small delay to ensure schema is fully committed
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
   } catch (err) {
     console.error("❌ FATAL: Schema initialization failed:", err.message);
+    console.error("❌ Full error:", err);
     process.exit(1); // Exit if schema creation fails
   }
 
   app.listen(PORT, () => {
     console.log("🚀 Server running on port", PORT);
+    console.log("✅ Ready to accept requests");
     startCron();
   });
 }
