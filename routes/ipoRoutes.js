@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const db = require("../config/db");
+const db = require("../db/pool");
 const { syncAllEvents } = require("../services/syncService");
 
 function serializeIPO(row) {

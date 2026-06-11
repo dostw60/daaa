@@ -1,4 +1,4 @@
-const db = require("../config/db");
+const db = require("../db/pool");
 const { scrapeStockEvents } = require("../scrapers/ipoScraper");
 const { normalizeEvent } = require("./normalizeEvent");
 
