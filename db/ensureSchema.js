@@ -51,6 +51,33 @@ async function ensureSchema() {
     CREATE UNIQUE INDEX IF NOT EXISTS upcoming_ipos_company_issue_source_idx
     ON upcoming_ipos (company_name, issue_type, source)
   `);
+
+  // Create stock_events table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS stock_events (
+      id SERIAL PRIMARY KEY,
+      company_name TEXT,
+      symbol TEXT,
+      type TEXT,
+      date DATE,
+      status TEXT,
+      source TEXT,
+      source_url TEXT,
+      confidence NUMERIC DEFAULT 0,
+      event_value JSONB,
+      announcement TEXT,
+      shares NUMERIC DEFAULT 0,
+      issue_size NUMERIC DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS stock_events_unique_idx
+    ON stock_events (company_name, type, date)
+    WHERE type IN ('Bonus', 'Dividend', 'Rights', 'IPO')
+  `);
 }
 
 module.exports = { ensureSchema };
