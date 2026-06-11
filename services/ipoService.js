@@ -2,6 +2,18 @@ const db = require("../config/db");
 const { scrapeStockEvents } = require("../scrapers/ipoScraper");
 const { normalizeEvent } = require("./normalizeEvent");
 
+function statusRankExpression(columnName) {
+  return `
+    CASE
+      WHEN ${columnName} IN ('PENDING', 'UPCOMING') THEN 1
+      WHEN ${columnName} IN ('OPEN', 'STARTED') THEN 2
+      WHEN ${columnName} IN ('CLOSED', 'ENDED') THEN 3
+      WHEN ${columnName} IN ('ALLOTTED', 'LISTED') THEN 4
+      ELSE 0
+    END
+  `;
+}
+
 /**
  * MAIN SYNC FUNCTION
  */
@@ -41,14 +53,14 @@ async function syncIPOs() {
             END,
             shares = CASE
               WHEN EXCLUDED.shares > 0
-                AND status_rank(EXCLUDED.status) >= status_rank(upcoming_ipos.status)
+                AND (${statusRankExpression("EXCLUDED.status")}) >= (${statusRankExpression("upcoming_ipos.status")})
                 THEN EXCLUDED.shares
               WHEN COALESCE(upcoming_ipos.shares, 0) = 0 AND EXCLUDED.shares > 0 THEN EXCLUDED.shares
               ELSE upcoming_ipos.shares
             END,
             issue_size = CASE
               WHEN EXCLUDED.issue_size > 0
-                AND status_rank(EXCLUDED.status) >= status_rank(upcoming_ipos.status)
+                AND (${statusRankExpression("EXCLUDED.status")}) >= (${statusRankExpression("upcoming_ipos.status")})
                 THEN EXCLUDED.issue_size
               WHEN COALESCE(upcoming_ipos.issue_size, 0) = 0 AND EXCLUDED.issue_size > 0 THEN EXCLUDED.issue_size
               ELSE upcoming_ipos.issue_size
@@ -56,13 +68,13 @@ async function syncIPOs() {
             issue_type = EXCLUDED.issue_type,
             event_value = CASE
               WHEN EXCLUDED.shares > 0
-                AND status_rank(EXCLUDED.status) >= status_rank(upcoming_ipos.status)
+                AND (${statusRankExpression("EXCLUDED.status")}) >= (${statusRankExpression("upcoming_ipos.status")})
                 THEN EXCLUDED.event_value
               WHEN COALESCE(upcoming_ipos.shares, 0) = 0 AND EXCLUDED.shares > 0 THEN EXCLUDED.event_value
               ELSE upcoming_ipos.event_value
             END,
             status = CASE
-              WHEN status_rank(EXCLUDED.status) >= status_rank(upcoming_ipos.status)
+              WHEN (${statusRankExpression("EXCLUDED.status")}) >= (${statusRankExpression("upcoming_ipos.status")})
                 THEN EXCLUDED.status
               ELSE upcoming_ipos.status
             END,
@@ -104,4 +116,3 @@ async function syncIPOs() {
 module.exports = {
   syncIPOs,
 };
-
