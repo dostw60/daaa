@@ -19,10 +19,12 @@ async function startServer() {
       throw new Error("DATABASE_URL is not set in environment variables");
     }
 
+    // Ensure schema is created BEFORE starting server
     await ensureSchema();
-    console.log("Schema check complete");
+    console.log("✅ Schema ensured successfully");
   } catch (err) {
-    console.warn("Schema check skipped:", err.message);
+    console.error("❌ FATAL: Schema initialization failed:", err.message);
+    process.exit(1); // Exit if schema creation fails
   }
 
   app.listen(PORT, () => {
