@@ -2,6 +2,20 @@ const pool = require("./pool");
 
 async function ensureSchema() {
   await pool.query(`
+    CREATE OR REPLACE FUNCTION status_rank(status TEXT)
+    RETURNS INT AS $$
+    BEGIN
+      RETURN CASE
+        WHEN status = 'Upcoming' THEN 1
+        WHEN status = 'Open' THEN 2
+        WHEN status = 'Closed' THEN 3
+        ELSE 0
+      END;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS upcoming_ipos (
       id SERIAL PRIMARY KEY,
       company_name TEXT,
