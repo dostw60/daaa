@@ -17,8 +17,8 @@ function statusRankExpression(columnName) {
 /**
  * MAIN SYNC PIPELINE
  */
-async function syncAllEvents() {
-  const events = await scrapeStockEvents();
+async function syncAllEvents(fromDate, toDate) {
+  const events = await scrapeStockEvents(fromDate, toDate);
   console.log("SCRAPED EVENTS:", events.length);
   let inserted = 0;
 

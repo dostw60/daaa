@@ -1,4 +1,6 @@
 const axios = require("axios");
+const cheerio = require("cheerio");
+
 let client = axios.create({
   timeout: 15000
 });
@@ -21,9 +23,6 @@ try {
   );
 }
 
-// -------------------------
-// FORMAT DATE (SAFE)
-// -------------------------
 function formatDate(d) {
   const date = new Date(d);
 
@@ -38,14 +37,94 @@ function formatDate(d) {
   return `${m}/${day}/${year}`;
 }
 
-// -------------------------
-// MAIN SCRAPER
-// -------------------------
+function normalizeEventItem(item) {
+  if (typeof item === "string") {
+    return {
+      announcementDetail: item,
+      announcement: item,
+      raw_text: item,
+      source: "merolagani",
+      source_url: "https://merolagani.com"
+    };
+  }
+
+  const text =
+    item?.announcementDetail ||
+    item?.announcement ||
+    item?.detail ||
+    item?.title ||
+    item?.text ||
+    item?.message ||
+    item?.event ||
+    item?.description ||
+    item?.raw_text ||
+    item?.rawText ||
+    item?.company_name ||
+    "";
+
+  return {
+    ...item,
+    announcementDetail: item?.announcementDetail || text,
+    announcement: item?.announcement || text,
+    raw_text: item?.raw_text || item?.rawText || text,
+    source: item?.source || "merolagani",
+    source_url: item?.source_url || item?.sourceUrl || "https://merolagani.com"
+  };
+}
+
+function parseMaybeJson(data) {
+  if (Array.isArray(data)) return data;
+
+  if (data && typeof data === "object") {
+    for (const key of ["data", "d", "result", "Data", "detail"]) {
+      if (Array.isArray(data[key])) return data[key];
+    }
+  }
+
+  if (typeof data === "string") {
+    const trimmed = data.trim();
+    if (!trimmed) return [];
+
+    try {
+      return parseMaybeJson(JSON.parse(trimmed));
+    } catch (err) {
+      if (trimmed.includes("<") && trimmed.includes(">")) {
+        const $ = cheerio.load(trimmed);
+        const rows = [];
+
+        $("tr, li, .announcement, .news, .event, .card").each((_, el) => {
+          const text = $(el).text().replace(/\s+/g, " ").trim();
+          if (text.length >= 10) {
+            rows.push(text);
+          }
+        });
+
+        if (rows.length > 0) {
+          return rows;
+        }
+
+        const bodyText = $("body").text().replace(/\s+/g, " ").trim();
+        if (bodyText.length >= 10) {
+          return [bodyText];
+        }
+      }
+
+      const match = trimmed.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+      if (!match) return [];
+
+      try {
+        return parseMaybeJson(JSON.parse(match[0]));
+      } catch (jsonErr) {
+        return [];
+      }
+    }
+  }
+
+  return [];
+}
+
 async function scrapeStockEvents(fromDate, toDate) {
   try {
-    // -------------------------
-    // DEFAULT DATE RANGE
-    // -------------------------
     if (!fromDate || !toDate) {
       const to = new Date();
       const from = new Date();
@@ -55,23 +134,15 @@ async function scrapeStockEvents(fromDate, toDate) {
       toDate = to;
     }
 
-    const url =
-      "https://www.merolagani.com/handlers/webrequesthandler.ashx";
-
+    const url = "https://www.merolagani.com/handlers/webrequesthandler.ashx";
     const params = {
       type: "stock_event",
       fromDate: formatDate(fromDate),
       toDate: formatDate(toDate)
     };
 
-    // -------------------------
-    // FIRST REQUEST (cookie warm-up)
-    // -------------------------
     await client.get("https://merolagani.com/");
 
-    // -------------------------
-    // API REQUEST
-    // -------------------------
     const { data } = await client.get(url, {
       params,
       headers: {
@@ -83,28 +154,17 @@ async function scrapeStockEvents(fromDate, toDate) {
       }
     });
 
-    console.log("📦 RAW RESPONSE TYPE:", typeof data);
-
-    // -------------------------
-    // NORMALIZE RESPONSE
-    // -------------------------
-    let list = [];
-
-    if (Array.isArray(data)) list = data;
-    else if (Array.isArray(data?.data)) list = data.data;
-    else if (Array.isArray(data?.d)) list = data.d;
-    else if (Array.isArray(data?.result)) list = data.result;
-    else if (Array.isArray(data?.Data)) list = data.Data;
-    else if (Array.isArray(data?.detail)) list = data.detail; // 🔥 IMPORTANT FIX
-    else list = [];
-
-    console.log("📊 Parsed Events Count:", list.length);
+    const list = parseMaybeJson(data).map(normalizeEventItem);
+    console.log("Parsed events count:", list.length);
 
     return list;
   } catch (err) {
-    console.error("❌ SCRAPER ERROR:", err.message);
+    console.error("SCRAPER ERROR:", err.message);
     return [];
   }
 }
 
-module.exports = { scrapeStockEvents };
+module.exports = {
+  scrapeStockEvents,
+  scrapeIPOs: scrapeStockEvents
+};

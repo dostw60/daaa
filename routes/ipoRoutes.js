@@ -12,14 +12,44 @@ function serializeIPO(row) {
 
 async function getUpcomingIPOs(req, res) {
     try {
-        const result = await db.query(
+        const upcomingResult = await db.query(
             "SELECT * FROM upcoming_ipos ORDER BY open_date ASC"
+        );
+
+        if (upcomingResult.rows.length > 0) {
+            return res.json({
+                success: true,
+                count: upcomingResult.rows.length,
+                data: upcomingResult.rows.map(serializeIPO)
+            });
+        }
+
+        const stockEventResult = await db.query(
+            `
+            SELECT *
+            FROM stock_events
+            WHERE type = 'IPO'
+            ORDER BY date DESC
+            `
         );
 
         res.json({
             success: true,
-            count: result.rows.length,
-            data: result.rows.map(serializeIPO)
+            count: stockEventResult.rows.length,
+            data: stockEventResult.rows.map((row) => ({
+                company_name: row.company_name || "",
+                symbol: row.symbol || "UNKNOWN",
+                shares: Number(row.shares || 0),
+                issue_size: Number(row.issue_size || 0),
+                issue_type: row.type || "IPO",
+                status: row.status || "Upcoming",
+                source: row.source || "merolagani",
+                source_url: row.source_url || "https://merolagani.com",
+                confidence: Number(row.confidence || 0),
+                event_value: row.event_value || null,
+                open_date: row.date || null,
+                announcement: row.announcement || ""
+            }))
         });
 
     } catch (err) {
@@ -40,7 +70,8 @@ router.get("/upcoming", async (req, res) => {
 
 router.post("/sync", async (req, res) => {
     try {
-        const result = await syncAllEvents();
+        const { fromDate, toDate } = req.query;
+        const result = await syncAllEvents(fromDate, toDate);
 
         res.json(result);
     } catch (err) {
