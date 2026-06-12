@@ -1,17 +1,14 @@
 const pool = require("../db/pool");
 
-const CORPORATE_ACTION_TYPES = ["BONUS", "DIVIDEND", "RIGHT_SHARE"];
-
-async function getCorporateActions(req, res) {
+async function getBonus(req, res) {
   try {
     let result = await pool.query(
       `
       SELECT *
       FROM stock_events
-      WHERE UPPER(type) = ANY($1::text[])
+      WHERE UPPER(type) = 'BONUS'
       ORDER BY date DESC NULLS LAST, updated_at DESC
-      `,
-      [CORPORATE_ACTION_TYPES]
+      `
     );
 
     if (result.rows.length === 0) {
@@ -19,10 +16,9 @@ async function getCorporateActions(req, res) {
         `
         SELECT *
         FROM upcoming_ipos
-        WHERE UPPER(issue_type) = ANY($1::text[])
+        WHERE UPPER(issue_type) = 'BONUS'
         ORDER BY updated_at DESC NULLS LAST, id DESC
-        `,
-        [CORPORATE_ACTION_TYPES]
+        `
       );
     }
 
@@ -40,5 +36,5 @@ async function getCorporateActions(req, res) {
 }
 
 module.exports = {
-  getCorporateActions,
+  getBonus,
 };

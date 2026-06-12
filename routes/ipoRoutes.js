@@ -31,9 +31,14 @@ async function getIPOs(req, res) {
 // Get Dividends
 async function getDividends(req, res) {
     try {
-        const result = await db.query(
+        let result = await db.query(
             "SELECT * FROM upcoming_ipos WHERE UPPER(issue_type) = 'DIVIDEND' ORDER BY updated_at DESC"
         );
+        if (result.rows.length === 0) {
+            result = await db.query(
+                "SELECT *, type AS issue_type FROM stock_events WHERE UPPER(type) = 'DIVIDEND' ORDER BY date DESC NULLS LAST, updated_at DESC"
+            );
+        }
         res.json({
             success: true,
             count: result.rows.length,
@@ -48,9 +53,14 @@ async function getDividends(req, res) {
 // Get Bonus
 async function getBonus(req, res) {
     try {
-        const result = await db.query(
+        let result = await db.query(
             "SELECT * FROM upcoming_ipos WHERE UPPER(issue_type) = 'BONUS' ORDER BY updated_at DESC"
         );
+        if (result.rows.length === 0) {
+            result = await db.query(
+                "SELECT *, type AS issue_type FROM stock_events WHERE UPPER(type) = 'BONUS' ORDER BY date DESC NULLS LAST, updated_at DESC"
+            );
+        }
         res.json({
             success: true,
             count: result.rows.length,
@@ -65,9 +75,14 @@ async function getBonus(req, res) {
 // Get Right Share
 async function getRightShare(req, res) {
     try {
-        const result = await db.query(
+        let result = await db.query(
             "SELECT * FROM upcoming_ipos WHERE UPPER(issue_type) = 'RIGHT_SHARE' ORDER BY updated_at DESC"
         );
+        if (result.rows.length === 0) {
+            result = await db.query(
+                "SELECT *, type AS issue_type FROM stock_events WHERE UPPER(type) = 'RIGHT_SHARE' ORDER BY date DESC NULLS LAST, updated_at DESC"
+            );
+        }
         res.json({
             success: true,
             count: result.rows.length,
