@@ -26,10 +26,8 @@ function normalizeEvent(raw = {}) {
   if (!rawText || rawText.length < 10) return null;
 
   const { type, confidence, value } = classifyEvent(rawText);
-  
-  // Accept IPO, Bonus, Dividend, RightShare events with lower confidence threshold
-  const validTypes = ["IPO", "Bonus", "Dividend", "RightShare"];
-  if (!validTypes.includes(type) || confidence < 0.3) return null;
+  const issueType = normalizeIssueType(type);
+  if (!issueType || confidence < 0.3) return null;
 
   const companyName = extractCompanyName(rawText);
   if (!companyName) return null;
@@ -42,7 +40,7 @@ function normalizeEvent(raw = {}) {
     symbol,
     shares,
     rawText,
-    type
+    type: issueType
   });
 
   // Extract percentage for Dividend/Bonus
@@ -55,11 +53,13 @@ function normalizeEvent(raw = {}) {
     company_name: companyName,
     symbol,
     shares,
-    issue_size: shares || (type === "Dividend" || type === "Bonus" ? percentage : 0),
-    issue_type: type,
+    issue_size: shares || (issueType === "DIVIDEND" || issueType === "BONUS" ? percentage : 0),
+    issue_type: issueType,
     status,
     source: raw.source || "merolagani",
     source_url: raw.source_url || raw.sourceUrl || "https://merolagani.com",
+    date: extractEventDate(raw),
+    announcement: rawText,
     event_value: {
       units: shares || null,
       percentage: percentage || null,
@@ -75,6 +75,36 @@ function normalizeEvent(raw = {}) {
       manualReviewReasons
     })
   };
+}
+
+function normalizeIssueType(type = "") {
+  const upper = String(type).toUpperCase();
+
+  if (upper === "IPO") return "IPO";
+  if (upper === "BONUS") return "BONUS";
+  if (upper === "DIVIDEND") return "DIVIDEND";
+  if (upper === "RIGHT_SHARE") return "RIGHT_SHARE";
+
+  return null;
+}
+
+function extractEventDate(raw = {}) {
+  const candidate =
+    raw.date ||
+    raw.actionDate ||
+    raw.announcementDate ||
+    raw.open_date ||
+    raw.openDate ||
+    null;
+
+  if (!candidate) return null;
+
+  const parsed = new Date(candidate);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return candidate;
 }
 
 function getRawText(raw) {
@@ -143,7 +173,7 @@ function extractSymbol(text = "", companyName = "") {
 }
 
 function extractShares(text = "") {
-  const match = text.match(/(\[\d,]+(?:\.\d+)?)\s*(?:units?|shares?)/i);
+  const match = text.match(/([\d,]+(?:\.\d+)?)\s*(?:units?|shares?)/i);
   if (!match) return 0;
 
   return Number(match[1].replace(/,/g, "").split(".")[0]) || 0;
@@ -167,22 +197,22 @@ function determineStatus(text = "") {
   const t = text.toLowerCase();
 
   if (/\b(listed|listing|has been listed)\b/.test(t)) {
-    return "Listed";
+    return "LISTED";
   }
 
   if (/\b(allotted|distributed|closed|closing)\b/.test(t) || /\bclose(?:s|d)?\b/.test(t)) {
-    return "Closed";
+    return "CLOSED";
   }
 
   if (/\b(opened|opening|started|extended)\b/.test(t) || /\bopen(?:s)?\b/.test(t)) {
-    return "Open";
+    return "OPEN";
   }
 
   if (/\b(is going to|will|upcoming|starting from|issue|issuing)\b/.test(t)) {
-    return "Upcoming";
+    return "UPCOMING";
   }
 
-  return "Upcoming";
+  return "UPCOMING";
 }
 
 function getManualReviewReasons({ companyName, symbol, shares, rawText, type }) {
@@ -198,11 +228,11 @@ function getManualReviewReasons({ companyName, symbol, shares, rawText, type }) 
 
   // For Dividend/Bonus, percentage is more important than shares
   const percentage = extractPercentage(rawText);
-  if (["Dividend", "Bonus"].includes(type) && !percentage) {
+  if (["DIVIDEND", "BONUS"].includes(type) && !percentage) {
     reasons.push("percentage_missing");
   }
 
-  if (!shares && !["Dividend", "Bonus"].includes(type)) {
+  if (!shares && !["DIVIDEND", "BONUS"].includes(type)) {
     reasons.push("units_missing");
   }
 

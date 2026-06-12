@@ -8,7 +8,7 @@ async function getEvents(req, res) {
     let values = [];
 
     if (type) {
-      query = "SELECT * FROM stock_events WHERE type=$1 ORDER BY date DESC";
+      query = "SELECT * FROM stock_events WHERE UPPER(type) = UPPER($1) ORDER BY date DESC";
       values = [type];
     }
 

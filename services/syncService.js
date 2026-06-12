@@ -101,6 +101,54 @@ async function syncAllEvents(fromDate, toDate) {
         ]
       );
 
+      await db.query(
+        `
+        INSERT INTO stock_events
+        (
+          company_name,
+          symbol,
+          type,
+          date,
+          status,
+          source,
+          source_url,
+          confidence,
+          event_value,
+          announcement,
+          shares,
+          issue_size,
+          updated_at
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+        ON CONFLICT (company_name, type, date)
+        DO UPDATE SET
+          symbol = EXCLUDED.symbol,
+          status = EXCLUDED.status,
+          source = EXCLUDED.source,
+          source_url = EXCLUDED.source_url,
+          confidence = GREATEST(COALESCE(stock_events.confidence, 0), COALESCE(EXCLUDED.confidence, 0)),
+          event_value = EXCLUDED.event_value,
+          announcement = EXCLUDED.announcement,
+          shares = EXCLUDED.shares,
+          issue_size = EXCLUDED.issue_size,
+          updated_at = NOW()
+        `,
+        [
+          normalized.company_name,
+          normalized.symbol,
+          normalized.issue_type,
+          normalized.date || null,
+          normalized.status,
+          normalized.source,
+          normalized.source_url,
+          normalized.confidence,
+          JSON.stringify(normalized.event_value),
+          normalized.announcement || normalized.company_name,
+          normalized.shares,
+          normalized.issue_size
+        ]
+      );
+
       inserted++;
     } catch (err) {
       console.error("DB Insert Error:", err.message);

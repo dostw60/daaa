@@ -2,14 +2,25 @@ const pool = require("../db/pool");
 
 async function getDividends(req, res) {
   try {
-    const result = await pool.query(
+    let result = await pool.query(
       `
       SELECT *
       FROM stock_events
-      WHERE type='DIVIDEND'
-      ORDER BY date
+      WHERE UPPER(type) = 'DIVIDEND'
+      ORDER BY date DESC NULLS LAST, updated_at DESC
       `
     );
+
+    if (result.rows.length === 0) {
+      result = await pool.query(
+        `
+        SELECT *
+        FROM upcoming_ipos
+        WHERE UPPER(issue_type) = 'DIVIDEND'
+        ORDER BY updated_at DESC NULLS LAST, id DESC
+        `
+      );
+    }
 
     res.json({
       success: true,

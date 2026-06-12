@@ -8,9 +8,9 @@ async function ensureSchema() {
       RETURNS INT AS $$
       BEGIN
         RETURN CASE
-          WHEN status = 'Upcoming' THEN 1
-          WHEN status = 'Open' THEN 2
-          WHEN status = 'Closed' THEN 3
+          WHEN status = 'UPCOMING' THEN 1
+          WHEN status = 'OPEN' THEN 2
+          WHEN status = 'CLOSED' THEN 3
           ELSE 0
         END;
       END;

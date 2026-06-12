@@ -15,7 +15,7 @@ function serializeEvent(row) {
 async function getIPOs(req, res) {
     try {
         const result = await db.query(
-            "SELECT * FROM upcoming_ipos WHERE issue_type = 'IPO' ORDER BY open_date ASC"
+            "SELECT * FROM upcoming_ipos WHERE UPPER(issue_type) = 'IPO' ORDER BY open_date ASC"
         );
         res.json({
             success: true,
@@ -32,7 +32,7 @@ async function getIPOs(req, res) {
 async function getDividends(req, res) {
     try {
         const result = await db.query(
-            "SELECT * FROM upcoming_ipos WHERE issue_type = 'Dividend' ORDER BY updated_at DESC"
+            "SELECT * FROM upcoming_ipos WHERE UPPER(issue_type) = 'DIVIDEND' ORDER BY updated_at DESC"
         );
         res.json({
             success: true,
@@ -49,7 +49,7 @@ async function getDividends(req, res) {
 async function getBonus(req, res) {
     try {
         const result = await db.query(
-            "SELECT * FROM upcoming_ipos WHERE issue_type = 'Bonus' ORDER BY updated_at DESC"
+            "SELECT * FROM upcoming_ipos WHERE UPPER(issue_type) = 'BONUS' ORDER BY updated_at DESC"
         );
         res.json({
             success: true,
@@ -66,7 +66,7 @@ async function getBonus(req, res) {
 async function getRightShare(req, res) {
     try {
         const result = await db.query(
-            "SELECT * FROM upcoming_ipos WHERE issue_type = 'RightShare' ORDER BY updated_at DESC"
+            "SELECT * FROM upcoming_ipos WHERE UPPER(issue_type) = 'RIGHT_SHARE' ORDER BY updated_at DESC"
         );
         res.json({
             success: true,

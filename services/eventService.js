@@ -8,18 +8,18 @@ async function upsertEvents(fromDate, toDate) {
     await pool.query(
       `
       INSERT INTO stock_events 
-      (date, day, company_name, announcement, type, source)
+      (date, company_name, announcement, type, source, source_url)
       VALUES ($1,$2,$3,$4,$5,$6)
       ON CONFLICT (company_name, date, type)
       DO NOTHING
       `,
       [
         e.date,
-        e.day,
         extractCompany(e.announcement),
         e.announcement,
         e.type,
         e.source,
+        e.source_url,
       ]
     );
   }
