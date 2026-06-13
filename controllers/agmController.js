@@ -1,10 +1,8 @@
 const { getCorporateActionRows } = require("../services/corporateActionService");
 
-const CORPORATE_ACTION_TYPES = ["BONUS", "DIVIDEND", "RIGHT_SHARE", "AGM"];
-
-async function getCorporateActions(req, res) {
+async function getAgms(req, res) {
   try {
-    const rows = await getCorporateActionRows(CORPORATE_ACTION_TYPES);
+    const rows = await getCorporateActionRows(["AGM"]);
 
     res.json({
       success: true,
@@ -20,5 +18,5 @@ async function getCorporateActions(req, res) {
 }
 
 module.exports = {
-  getCorporateActions,
+  getAgms,
 };

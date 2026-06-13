@@ -84,6 +84,7 @@ function normalizeIssueType(type = "") {
   if (upper === "BONUS") return "BONUS";
   if (upper === "DIVIDEND") return "DIVIDEND";
   if (upper === "RIGHT_SHARE") return "RIGHT_SHARE";
+  if (upper === "AGM") return "AGM";
 
   return null;
 }
@@ -130,6 +131,13 @@ function extractCompanyName(text = "") {
   const afterDash = cleaned.match(/\s-\s(.+?)(?:\s+\([A-Z]{2,10}\))?$/);
   if (afterDash && looksLikeCompany(afterDash[1])) {
     return cleanCompanyName(afterDash[1]);
+  }
+
+  const afterBookClosure = cleaned.match(
+    /\bbook\s+closure\s+(?:of|for)\s+(.+?\b(?:Limited|Ltd\.?|Bank|Hydropower|Hydro|Energy|Company|Finance|Insurance|Hospital|College|Pharmaceuticals|Industries)\b)/i
+  );
+  if (afterBookClosure && looksLikeCompany(afterBookClosure[1])) {
+    return cleanCompanyName(afterBookClosure[1]);
   }
 
   const beforeAction = cleaned.match(
@@ -232,7 +240,7 @@ function getManualReviewReasons({ companyName, symbol, shares, rawText, type }) 
     reasons.push("percentage_missing");
   }
 
-  if (!shares && !["DIVIDEND", "BONUS"].includes(type)) {
+  if (!shares && !["DIVIDEND", "BONUS", "AGM"].includes(type)) {
     reasons.push("units_missing");
   }
 

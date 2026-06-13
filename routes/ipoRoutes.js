@@ -94,6 +94,28 @@ async function getRightShare(req, res) {
     }
 }
 
+// Get AGM
+async function getAgm(req, res) {
+    try {
+        let result = await db.query(
+            "SELECT * FROM upcoming_ipos WHERE UPPER(issue_type) = 'AGM' ORDER BY updated_at DESC"
+        );
+        if (result.rows.length === 0) {
+            result = await db.query(
+                "SELECT *, type AS issue_type FROM stock_events WHERE UPPER(type) = 'AGM' ORDER BY date DESC NULLS LAST, updated_at DESC"
+            );
+        }
+        res.json({
+            success: true,
+            count: result.rows.length,
+            data: result.rows.map(serializeEvent)
+        });
+    } catch (err) {
+        console.error("Error fetching AGM:", err.message);
+        res.status(500).json({ success: false, message: err.message });
+    }
+}
+
 // Get all events
 async function getAllEvents(req, res) {
     try {
@@ -116,6 +138,7 @@ router.get("/ipo", getIPOs);
 router.get("/dividend", getDividends);
 router.get("/bonus", getBonus);
 router.get("/rights", getRightShare);
+router.get("/agm", getAgm);
 router.get("/upcoming", getIPOs);
 
 // Debug endpoint - check tables exist and show raw data

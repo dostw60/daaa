@@ -1,31 +1,13 @@
-const pool = require("../db/pool");
+const { getCorporateActionRows } = require("../services/corporateActionService");
 
 async function getBonus(req, res) {
   try {
-    let result = await pool.query(
-      `
-      SELECT *
-      FROM stock_events
-      WHERE UPPER(type) = 'BONUS'
-      ORDER BY date DESC NULLS LAST, updated_at DESC
-      `
-    );
-
-    if (result.rows.length === 0) {
-      result = await pool.query(
-        `
-        SELECT *
-        FROM upcoming_ipos
-        WHERE UPPER(issue_type) = 'BONUS'
-        ORDER BY updated_at DESC NULLS LAST, id DESC
-        `
-      );
-    }
+    const rows = await getCorporateActionRows(["BONUS"]);
 
     res.json({
       success: true,
-      count: result.rows.length,
-      data: result.rows,
+      count: rows.length,
+      data: rows,
     });
   } catch (err) {
     res.status(500).json({

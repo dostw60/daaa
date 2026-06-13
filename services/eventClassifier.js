@@ -53,6 +53,17 @@ function classifyEvent(text = "") {
     };
   }
 
+  // AGM
+  if (
+    t.includes("agm") ||
+    t.includes("annual general meeting") ||
+    t.includes("book closure")
+  ) {
+    type = "AGM";
+    confidence = 0.85;
+    value = null;
+  }
+
   return { type, value, confidence };
 }
 
