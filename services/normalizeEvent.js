@@ -21,12 +21,16 @@ const INVALID_SYMBOLS = new Set([
   "SHARES"
 ]);
 
+/**
+ * MAIN NORMALIZER
+ */
 function normalizeEvent(raw = {}) {
   const rawText = getRawText(raw);
   if (!rawText || rawText.length < 10) return null;
 
-  const { type, confidence, value } = classifyEvent(rawText);
+  const { type, confidence } = classifyEvent(rawText);
   const issueType = normalizeIssueType(type);
+
   if (!issueType || confidence < 0.3) return null;
 
   const companyName = extractCompanyName(rawText);
@@ -35,6 +39,10 @@ function normalizeEvent(raw = {}) {
   const shares = extractShares(rawText);
   const symbol = extractSymbol(rawText, companyName);
   const status = determineStatus(rawText);
+
+  const percentage = extractPercentage(rawText);
+  const ratio = extractRatio(rawText);
+
   const manualReviewReasons = getManualReviewReasons({
     companyName,
     symbol,
@@ -43,30 +51,34 @@ function normalizeEvent(raw = {}) {
     type: issueType
   });
 
-  // Extract percentage for Dividend/Bonus
-  const percentage = extractPercentage(rawText);
-  
-  // Extract ratio for RightShare
-  const ratio = extractRatio(rawText);
-
   return {
     company_name: companyName,
     symbol,
     shares,
-    issue_size: shares || (issueType === "DIVIDEND" || issueType === "BONUS" ? percentage : 0),
     issue_type: issueType,
+
+    issue_size:
+      shares ||
+      (issueType === "DIVIDEND" || issueType === "BONUS" ? percentage : 0),
+
     status,
-    source: raw.source || "merolagani",
-    source_url: raw.source_url || raw.sourceUrl || "https://merolagani.com",
+
+    // ✅ FIXED DATE
     date: extractEventDate(raw),
+
     announcement: rawText,
+
     event_value: {
       units: shares || null,
-      percentage: percentage || null,
-      ratio: ratio || null,
+      percentage,
+      ratio,
       manual_review: manualReviewReasons.length > 0,
       manual_review_reasons: manualReviewReasons
     },
+
+    source: raw.source || "merolagani",
+    source_url: raw.source_url || raw.sourceUrl || "https://merolagani.com",
+
     confidence: calculateConfidence({
       baseConfidence: confidence,
       companyName,
@@ -77,37 +89,51 @@ function normalizeEvent(raw = {}) {
   };
 }
 
+/**
+ * ISSUE TYPE
+ */
 function normalizeIssueType(type = "") {
-  const upper = String(type).toUpperCase();
+  const t = String(type).toUpperCase();
 
-  if (upper === "IPO") return "IPO";
-  if (upper === "BONUS") return "BONUS";
-  if (upper === "DIVIDEND") return "DIVIDEND";
-  if (upper === "RIGHT_SHARE") return "RIGHT_SHARE";
-  if (upper === "AGM") return "AGM";
+  if (t === "IPO") return "IPO";
+  if (t === "BONUS") return "BONUS";
+  if (t === "DIVIDEND") return "DIVIDEND";
+  if (t === "RIGHT_SHARE") return "RIGHT_SHARE";
+  if (t === "AGM") return "AGM";
 
   return null;
 }
 
+/**
+ * 🔥 FIXED DATE HANDLER (MAIN FIX)
+ */
 function extractEventDate(raw = {}) {
   const candidate =
-    raw.date ||
     raw.actionDate ||
+    raw.date ||
     raw.announcementDate ||
     raw.open_date ||
-    raw.openDate ||
-    null;
+    raw.openDate;
 
   if (!candidate) return null;
 
-  const parsed = new Date(candidate);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toISOString().slice(0, 10);
-  }
+  const normalized = String(candidate).replace(/-/g, "/");
+  const parts = normalized.split("/");
 
-  return candidate;
+  if (parts.length !== 3) return null;
+
+  const [year, month, day] = parts.map(Number);
+
+  if (!year || !month || !day) return null;
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return date.toISOString().slice(0, 10);
 }
 
+/**
+ * RAW TEXT
+ */
 function getRawText(raw) {
   return String(
     raw.announcementDetail ||
@@ -122,6 +148,9 @@ function getRawText(raw) {
     .trim();
 }
 
+/**
+ * COMPANY NAME
+ */
 function extractCompanyName(text = "") {
   const cleaned = text
     .replace(/^Listing of\s+/i, "")
@@ -133,16 +162,10 @@ function extractCompanyName(text = "") {
     return cleanCompanyName(afterDash[1]);
   }
 
-  const afterBookClosure = cleaned.match(
-    /\bbook\s+closure\s+(?:of|for)\s+(.+?\b(?:Limited|Ltd\.?|Bank|Hydropower|Hydro|Energy|Company|Finance|Insurance|Hospital|College|Pharmaceuticals|Industries)\b)/i
-  );
-  if (afterBookClosure && looksLikeCompany(afterBookClosure[1])) {
-    return cleanCompanyName(afterBookClosure[1]);
-  }
-
   const beforeAction = cleaned.match(
-    /^(.+?)\s+(?:has\s+(?:extended|published|notified|issued|distributed|opened|closed|allotted|listed|made)|is\s+going\s+to|opened|closed|will\s+(?:open|close|issue)|published|notified|issued)\b/i
+    /^(.+?)\s+(?:has|is|will|opened|closed|published|notified|issued|distributed|listed)/i
   );
+
   if (beforeAction && looksLikeCompany(beforeAction[1])) {
     return cleanCompanyName(beforeAction[1]);
   }
@@ -150,6 +173,7 @@ function extractCompanyName(text = "") {
   const companyPrefix = cleaned.match(
     /^(.+?\b(?:Limited|Ltd\.?|Bank|Hydropower|Hydro|Energy|Company|Finance|Insurance|Hospital|College|Pharmaceuticals|Industries)\b)/i
   );
+
   if (companyPrefix) {
     return cleanCompanyName(companyPrefix[1]);
   }
@@ -157,72 +181,81 @@ function extractCompanyName(text = "") {
   return null;
 }
 
+/**
+ * CLEAN NAME
+ */
 function cleanCompanyName(name = "") {
   return name
     .replace(/\s+\([A-Z]{2,10}\)\s*$/i, "")
-    .replace(/\s+\b(?:has\s+(?:extended|published|notified|issued|distributed|opened|closed|allotted|listed|made)|is\s+going\s+to|opened|closed|published|notified|issued)\b.*$/i, "")
+    .replace(/\s+(has|is|will|published|issued|notified|listed).*$/i, "")
     .replace(/[.,;:\-]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
+/**
+ * CHECK COMPANY
+ */
 function looksLikeCompany(value = "") {
   return /\b(Limited|Ltd\.?|Bank|Hydropower|Hydro|Energy|Company|Finance|Insurance|Hospital|College|Pharmaceuticals|Industries)\b/i.test(value);
 }
 
+/**
+ * SYMBOL
+ */
 function extractSymbol(text = "", companyName = "") {
   const symbols = [...text.matchAll(/\(([A-Z]{2,12})\)/gi)]
-    .map((match) => match[1].toUpperCase())
-    .filter((symbol) => !INVALID_SYMBOLS.has(symbol));
+    .map(m => m[1].toUpperCase())
+    .filter(s => !INVALID_SYMBOLS.has(s));
 
   if (symbols.length) return symbols[symbols.length - 1];
 
   return SYMBOL_BY_COMPANY[companyName.toLowerCase()] || "UNKNOWN";
 }
 
+/**
+ * SHARES
+ */
 function extractShares(text = "") {
-  const match = text.match(/([\d,]+(?:\.\d+)?)\s*(?:units?|shares?)/i);
+  const match = text.match(/([\d,]+(?:\.\d+)?)\s*(units?|shares?)/i);
   if (!match) return 0;
 
   return Number(match[1].replace(/,/g, "").split(".")[0]) || 0;
 }
 
-// Extract percentage for Dividend/Bonus
+/**
+ * PERCENTAGE
+ */
 function extractPercentage(text = "") {
   const match = text.match(/(\d+(?:\.\d+)?)\s*%/);
-  if (!match) return null;
-  return match[1];
+  return match ? match[1] : null;
 }
 
-// Extract ratio for RightShare (e.g., 1:5)
+/**
+ * RATIO
+ */
 function extractRatio(text = "") {
   const match = text.match(/(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/);
-  if (!match) return null;
-  return `${match[1]}:${match[2]}`;
+  return match ? `${match[1]}:${match[2]}` : null;
 }
 
+/**
+ * STATUS
+ */
 function determineStatus(text = "") {
   const t = text.toLowerCase();
 
-  if (/\b(listed|listing|has been listed)\b/.test(t)) {
-    return "LISTED";
-  }
-
-  if (/\b(allotted|distributed|closed|closing)\b/.test(t) || /\bclose(?:s|d)?\b/.test(t)) {
-    return "CLOSED";
-  }
-
-  if (/\b(opened|opening|started|extended)\b/.test(t) || /\bopen(?:s)?\b/.test(t)) {
-    return "OPEN";
-  }
-
-  if (/\b(is going to|will|upcoming|starting from|issue|issuing)\b/.test(t)) {
-    return "UPCOMING";
-  }
+  if (/\b(listed|listing)\b/.test(t)) return "LISTED";
+  if (/\b(allotted|distributed|closed)\b/.test(t)) return "CLOSED";
+  if (/\b(opened|opening|extended)\b/.test(t)) return "OPEN";
+  if (/\b(will|upcoming|issue|issuing)\b/.test(t)) return "UPCOMING";
 
   return "UPCOMING";
 }
 
+/**
+ * MANUAL REVIEW
+ */
 function getManualReviewReasons({ companyName, symbol, shares, rawText, type }) {
   const reasons = [];
 
@@ -234,8 +267,8 @@ function getManualReviewReasons({ companyName, symbol, shares, rawText, type }) 
     reasons.push("symbol_missing");
   }
 
-  // For Dividend/Bonus, percentage is more important than shares
   const percentage = extractPercentage(rawText);
+
   if (["DIVIDEND", "BONUS"].includes(type) && !percentage) {
     reasons.push("percentage_missing");
   }
@@ -244,18 +277,21 @@ function getManualReviewReasons({ companyName, symbol, shares, rawText, type }) 
     reasons.push("units_missing");
   }
 
-  if (/\bhas\s+(extended|published|notified|issued)\b/i.test(companyName)) {
-    reasons.push("company_name_has_announcement_suffix");
-  }
-
   return reasons;
 }
 
-function calculateConfidence({ baseConfidence, companyName, symbol, shares, manualReviewReasons }) {
+/**
+ * CONFIDENCE
+ */
+function calculateConfidence({
+  baseConfidence,
+  companyName,
+  symbol,
+  shares,
+  manualReviewReasons
+}) {
   if (manualReviewReasons.includes("company_name_partial")) return 0.2;
-  if (manualReviewReasons.includes("company_name_has_announcement_suffix")) return 0.2;
   if (!shares && symbol === "UNKNOWN") return 0.2;
-  if (!shares) return 0.5;
   if (symbol === "UNKNOWN") return 0.8;
   if (companyName && symbol !== "UNKNOWN" && shares) return 1;
 
