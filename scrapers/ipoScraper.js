@@ -10,7 +10,6 @@ try {
   const { CookieJar } = require("tough-cookie");
 
   const jar = new CookieJar();
-
   client = wrapper(
     axios.create({
       jar,
@@ -19,12 +18,11 @@ try {
     })
   );
 } catch (err) {
-  console.warn("axios-cookiejar-support not available, using plain axios.");
+  console.warn(
+    "axios-cookiejar-support not available; falling back to plain axios client."
+  );
 }
 
-/**
- * IMPORTANT: MeroLagani expects M/D/YYYY (NO zero padding)
- */
 function formatDate(d) {
   const date = new Date(d);
 
@@ -32,18 +30,19 @@ function formatDate(d) {
     throw new Error("Invalid date passed to formatDate()");
   }
 
-  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const year = date.getFullYear();
+
+  return `${m}/${day}/${year}`;
 }
 
-/**
- * Keep raw object intact (CRITICAL FIX)
- */
 function normalizeEventItem(item) {
   if (typeof item === "string") {
     return {
-      raw_text: item,
       announcementDetail: item,
       announcement: item,
+      raw_text: item,
       source: "merolagani",
       source_url: "https://merolagani.com"
     };
@@ -64,20 +63,15 @@ function normalizeEventItem(item) {
     "";
 
   return {
-    ...item, // 🔥 IMPORTANT: preserve ALL original fields
-
+    ...item,
     announcementDetail: item?.announcementDetail || text,
     announcement: item?.announcement || text,
     raw_text: item?.raw_text || item?.rawText || text,
-
     source: item?.source || "merolagani",
     source_url: item?.source_url || item?.sourceUrl || "https://merolagani.com"
   };
 }
 
-/**
- * Robust JSON + HTML parser
- */
 function parseMaybeJson(data) {
   if (Array.isArray(data)) return data;
 
@@ -94,22 +88,25 @@ function parseMaybeJson(data) {
     try {
       return parseMaybeJson(JSON.parse(trimmed));
     } catch (err) {
-      if (trimmed.includes("<")) {
+      if (trimmed.includes("<") && trimmed.includes(">")) {
         const $ = cheerio.load(trimmed);
-
         const rows = [];
 
         $("tr, li, .announcement, .news, .event, .card").each((_, el) => {
           const text = $(el).text().replace(/\s+/g, " ").trim();
-          if (text.length > 10) {
-            rows.push({ raw_text: text });
+          if (text.length >= 10) {
+            rows.push(text);
           }
         });
 
-        if (rows.length) return rows;
+        if (rows.length > 0) {
+          return rows;
+        }
 
         const bodyText = $("body").text().replace(/\s+/g, " ").trim();
-        if (bodyText.length > 10) return [{ raw_text: bodyText }];
+        if (bodyText.length >= 10) {
+          return [bodyText];
+        }
       }
 
       const match = trimmed.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
@@ -117,7 +114,7 @@ function parseMaybeJson(data) {
 
       try {
         return parseMaybeJson(JSON.parse(match[0]));
-      } catch {
+      } catch (jsonErr) {
         return [];
       }
     }
@@ -126,9 +123,6 @@ function parseMaybeJson(data) {
   return [];
 }
 
-/**
- * Main scraper
- */
 async function scrapeStockEvents(fromDate, toDate) {
   try {
     if (!fromDate || !toDate) {
@@ -141,40 +135,51 @@ async function scrapeStockEvents(fromDate, toDate) {
     }
 
     const url = "https://www.merolagani.com/handlers/webrequesthandler.ashx";
-
     const params = {
       type: "stock_event",
       fromDate: formatDate(fromDate),
       toDate: formatDate(toDate)
     };
 
-    console.log("🔍 Fetching:", params);
+    console.log("🔍 Scraping from:", formatDate(fromDate), "to:", formatDate(toDate));
 
-    // Session init
-    await client.get("https://merolagani.com/");
+    // First request to establish session
+    await client.get("https://merolagani.com/", {
+      timeout: 10000
+    });
 
+    // Make API request
     const { data } = await client.get(url, {
       params,
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
         Accept: "application/json, text/plain, */*",
         Referer: "https://merolagani.com/",
         "X-Requested-With": "XMLHttpRequest"
-      }
+      },
+      timeout: 10000
     });
 
-    const list = parseMaybeJson(data).map(normalizeEventItem);
+    console.log("📊 Raw API response type:", typeof data);
+    console.log("📊 Raw API response length:", JSON.stringify(data).length);
+    console.log("📊 Raw API response (first 500 chars):", JSON.stringify(data).substring(0, 500));
 
-    console.log("✅ Parsed events:", list.length);
+    const list = parseMaybeJson(data).map(normalizeEventItem);
+    console.log("✅ Parsed events count:", list.length);
 
     if (list.length > 0) {
-      console.log("📝 Sample:", list[0]);
+      console.log("📝 Sample event:", list[0]);
     }
 
     return list;
   } catch (err) {
     console.error("❌ SCRAPER ERROR:", err.message);
+    console.error("❌ Error code:", err.code);
+    if (err.response) {
+      console.error("❌ Response status:", err.response.status);
+      console.error("❌ Response data (first 200 chars):", JSON.stringify(err.response.data).substring(0, 200));
+    }
     return [];
   }
 }

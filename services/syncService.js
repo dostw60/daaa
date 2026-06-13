@@ -20,16 +20,17 @@ function statusRankExpression(columnName) {
 async function syncAllEvents(fromDate, toDate) {
   const events = await scrapeStockEvents(fromDate, toDate);
   console.log("SCRAPED EVENTS:", events.length);
+
   let inserted = 0;
 
   for (const e of events) {
     const normalized = normalizeEvent(e);
     if (!normalized) continue;
 
-    // ----------------------------
-    // DB INSERT (SAFE UPSERT)
-    // ----------------------------
     try {
+      // ============================
+      // UPCOMING_IPOS TABLE (FIXED)
+      // ============================
       await db.query(
         `
         INSERT INTO upcoming_ipos
@@ -43,48 +44,56 @@ async function syncAllEvents(fromDate, toDate) {
           status,
           source,
           source_url,
-          confidence
+          confidence,
+          open_date,
+          event_date
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
         ON CONFLICT (company_name, issue_type, source)
         DO UPDATE SET
           symbol = CASE
             WHEN EXCLUDED.symbol <> 'UNKNOWN' THEN EXCLUDED.symbol
-            WHEN upcoming_ipos.symbol IN ('LOCALS', 'PUBLIC', 'SHARES', 'SHARE', 'IPO', 'FPO', 'AGM', 'SGM') THEN 'UNKNOWN'
+            WHEN upcoming_ipos.symbol IN ('LOCALS','PUBLIC','SHARE','SHARES','IPO','FPO','AGM','SGM')
+              THEN 'UNKNOWN'
             ELSE upcoming_ipos.symbol
           END,
+
           shares = CASE
             WHEN EXCLUDED.shares > 0
-              AND (${statusRankExpression("EXCLUDED.status")}) >= (${statusRankExpression("upcoming_ipos.status")})
-              THEN EXCLUDED.shares
-            WHEN COALESCE(upcoming_ipos.shares, 0) = 0 AND EXCLUDED.shares > 0 THEN EXCLUDED.shares
+              AND (${statusRankExpression("EXCLUDED.status")})
+                >= (${statusRankExpression("upcoming_ipos.status")})
+            THEN EXCLUDED.shares
             ELSE upcoming_ipos.shares
           END,
+
           issue_size = CASE
             WHEN EXCLUDED.issue_size > 0
-              AND (${statusRankExpression("EXCLUDED.status")}) >= (${statusRankExpression("upcoming_ipos.status")})
-              THEN EXCLUDED.issue_size
-            WHEN COALESCE(upcoming_ipos.issue_size, 0) = 0 AND EXCLUDED.issue_size > 0 THEN EXCLUDED.issue_size
+              AND (${statusRankExpression("EXCLUDED.status")})
+                >= (${statusRankExpression("upcoming_ipos.status")})
+            THEN EXCLUDED.issue_size
             ELSE upcoming_ipos.issue_size
           END,
+
           issue_type = EXCLUDED.issue_type,
-          event_value = CASE
-            WHEN EXCLUDED.shares > 0
-              AND (${statusRankExpression("EXCLUDED.status")}) >= (${statusRankExpression("upcoming_ipos.status")})
-              THEN EXCLUDED.event_value
-            WHEN COALESCE(upcoming_ipos.shares, 0) = 0 AND EXCLUDED.shares > 0 THEN EXCLUDED.event_value
-            ELSE upcoming_ipos.event_value
-          END,
+          event_value = EXCLUDED.event_value,
+
           status = CASE
-            WHEN (${statusRankExpression("EXCLUDED.status")}) >= (${statusRankExpression("upcoming_ipos.status")})
-              THEN EXCLUDED.status
+            WHEN (${statusRankExpression("EXCLUDED.status")})
+              >= (${statusRankExpression("upcoming_ipos.status")})
+            THEN EXCLUDED.status
             ELSE upcoming_ipos.status
           END,
+
           source_url = EXCLUDED.source_url,
+
           confidence = GREATEST(
-            COALESCE(upcoming_ipos.confidence, 0),
-            COALESCE(EXCLUDED.confidence, 0)
+            COALESCE(upcoming_ipos.confidence,0),
+            COALESCE(EXCLUDED.confidence,0)
           ),
+
+          open_date = COALESCE(EXCLUDED.open_date, upcoming_ipos.open_date),
+          event_date = COALESCE(EXCLUDED.event_date, upcoming_ipos.event_date),
+
           updated_at = NOW()
         `,
         [
@@ -97,10 +106,17 @@ async function syncAllEvents(fromDate, toDate) {
           normalized.status,
           normalized.source,
           normalized.source_url,
-          normalized.confidence
+          normalized.confidence,
+
+          // ✅ IMPORTANT FIX (DATES)
+          normalized.open_date || null,
+          normalized.date || null
         ]
       );
 
+      // ============================
+      // STOCK_EVENTS TABLE (UNCHANGED)
+      // ============================
       await db.query(
         `
         INSERT INTO stock_events
@@ -126,7 +142,10 @@ async function syncAllEvents(fromDate, toDate) {
           status = EXCLUDED.status,
           source = EXCLUDED.source,
           source_url = EXCLUDED.source_url,
-          confidence = GREATEST(COALESCE(stock_events.confidence, 0), COALESCE(EXCLUDED.confidence, 0)),
+          confidence = GREATEST(
+            COALESCE(stock_events.confidence,0),
+            COALESCE(EXCLUDED.confidence,0)
+          ),
           event_value = EXCLUDED.event_value,
           announcement = EXCLUDED.announcement,
           shares = EXCLUDED.shares,
@@ -162,4 +181,4 @@ async function syncAllEvents(fromDate, toDate) {
   };
 }
 
-module.exports = { syncAllEvents } ; 
+module.exports = { syncAllEvents };
